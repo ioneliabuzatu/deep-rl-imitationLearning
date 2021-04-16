@@ -7,7 +7,8 @@ import base64
 import random
 import numpy as np
 from time import time, strftime
-from tqdm.notebook import tqdm
+# from tqdm.notebook import tqdm
+from tqdm import tqdm
 
 # PyTorch imports
 import torch
@@ -26,21 +27,23 @@ from onnx2pytorch import ConvertModel
 import gym
 from gym import logger as gymlogger
 from gym.wrappers import Monitor
-gymlogger.set_level(40) #error only
+
+gymlogger.set_level(40)  # error only
 
 # Plotting and notebook imports
 import matplotlib.pyplot as plt
 from matplotlib import animation
-import seaborn as sns; sns.set()
+import seaborn as sns;
+
+sns.set()
 from IPython.display import HTML, clear_output
 from IPython import display
 
 # start virtual display
 from pyvirtualdisplay import Display
+
 pydisplay = Display(visible=0, size=(640, 480))
 pydisplay.start()
-
-
 
 
 class Logger():
@@ -70,12 +73,12 @@ class Logger():
             self.log_dict[name] = []
             self.dump_idx[name] = -1
         self.log_dict[name].append((len(self.log_dict[name]), time(), value))
-    
+
     def get_values(self, name):
         if name in self.log_dict:
             return [x[2] for x in self.log_dict[name]]
         return None
-    
+
     def dump(self):
         for name, rows in self.log_dict.items():
             with open(os.path.join(self.log_dir, name + ".log"), "a") as f:
@@ -86,34 +89,34 @@ class Logger():
 
 
 def plot_metrics(logger):
-    train_loss  = logger.get_values("training_loss")
-    train_entropy  = logger.get_values("training_entropy")
+    train_loss = logger.get_values("training_loss")
+    train_entropy = logger.get_values("training_entropy")
     val_loss = logger.get_values("validation_loss")
     val_acc = logger.get_values("validation_accuracy")
-    
-    fig = plt.figure(figsize=(15,5))
+
+    fig = plt.figure(figsize=(15, 5))
     ax1 = fig.add_subplot(131, label="train")
-    ax2 = fig.add_subplot(131, label="val",frame_on=False)
+    ax2 = fig.add_subplot(131, label="val", frame_on=False)
     ax4 = fig.add_subplot(132, label="entropy")
     ax3 = fig.add_subplot(133, label="acc")
 
     ax1.plot(train_loss, color="C0")
     ax1.set_ylabel("Loss")
-    ax1.set_xlabel("Update (Training)", color="C0")        
-    ax1.xaxis.grid(False)  
-    ax1.set_ylim((0,4))
+    ax1.set_xlabel("Update (Training)", color="C0")
+    ax1.xaxis.grid(False)
+    ax1.set_ylim((0, 4))
 
     ax2.plot(val_loss, color="C1")
     ax2.xaxis.tick_top()
     ax2.yaxis.tick_right()
-    ax2.set_xlabel('Epoch (Validation)', color="C1")     
-    ax2.xaxis.set_label_position('top')     
+    ax2.set_xlabel('Epoch (Validation)', color="C1")
+    ax2.xaxis.set_label_position('top')
     ax2.xaxis.grid(False)
     ax2.get_yaxis().set_visible(False)
-    ax2.set_ylim((0,4))
+    ax2.set_ylim((0, 4))
 
-    ax4.plot(train_entropy, color="C3")    
-    ax4.set_xlabel('Update (Training)', color="black")     
+    ax4.plot(train_entropy, color="C3")
+    ax4.set_xlabel('Update (Training)', color="black")
     ax4.set_ylabel("Entropy", color="C3")
     ax4.tick_params(axis='x', colors="black")
     ax4.tick_params(axis='y', colors="black")
@@ -125,22 +128,25 @@ def plot_metrics(logger):
     ax3.tick_params(axis='x', colors="black")
     ax3.tick_params(axis='y', colors="black")
     ax3.xaxis.grid(False)
-    ax3.set_ylim((0,1))
+    ax3.set_ylim((0, 1))
 
     fig.tight_layout(pad=2.0)
     plt.show()
-    
-                    
+
+
 def print_action(dataset, action):
     action = dataset.action_mapping[action]
     print("Left %.1f" % action[0] if action[0] < 0 else "Right %.1f" %
-          action[0] if action[0] > 0 else "Straight")
+                                                        action[0] if action[0] > 0 else "Straight")
     print("Throttle %.1f" % action[1])
     print("Break %.1f" % action[2])
+
 
 """
 Utility functions to enable video recording of gym environment and displaying it
 """
+
+
 def show_video():
     mp4list = glob.glob('video/*.mp4')
     if len(mp4list) > 0:
@@ -151,16 +157,17 @@ def show_video():
                     loop controls style="height: 400px;">
                     <source src="data:video/mp4;base64,{0}" type="video/mp4" />
                  </video>'''.format(encoded.decode('ascii'))))
-    else: 
+    else:
         print("Could not find video")
-    
+
 
 def wrap_env(env):
     env = Monitor(env, './video', force=True)
     return env
 
+
 # Convert RBG image to grayscale and normalize by data statistics
-def rgb2gray(rgb, norm=True):    
+def rgb2gray(rgb, norm=True):
     # rgb image -> gray [0, 1]
     gray = np.dot(rgb[..., :], [0.299, 0.587, 0.114])
     if norm:
@@ -168,18 +175,21 @@ def rgb2gray(rgb, norm=True):
         gray = gray / 128. - 1.
     return gray
 
+
 def hide_hud(img):
     img[84:] = 0
     return img
 
+
 def save_as_onnx(torch_model, sample_input, model_path):
-    torch.onnx.export(torch_model,             # model being run
-                    sample_input,              # model input (or a tuple for multiple inputs)
-                    f=model_path,              # where to save the model (can be a file or file-like object)
-                    export_params=True,        # store the trained parameter weights inside the model file
-                    opset_version=13,          # the ONNX version to export the model to - see https://github.com/microsoft/onnxruntime/blob/master/docs/Versioning.md
-                    do_constant_folding=True,  # whether to execute constant folding for optimization
-                    )
+    torch.onnx.export(torch_model,  # model being run
+                      sample_input,  # model input (or a tuple for multiple inputs)
+                      f=model_path,  # where to save the model (can be a file or file-like object)
+                      export_params=True,  # store the trained parameter weights inside the model file
+                      opset_version=13,
+                      # the ONNX version to export the model to - see https://github.com/microsoft/onnxruntime/blob/master/docs/Versioning.md
+                      do_constant_folding=True,  # whether to execute constant folding for optimization
+                      )
 
 
 class DemonstrationDataset(Dataset):
@@ -189,7 +199,7 @@ class DemonstrationDataset(Dataset):
         self.frames = self.data["frames"]
         self.actions = self.data["actions"]
         self.img_stack = img_stack
-        
+
         if show_hud:
             self.transforms = Compose([rgb2gray])
         else:
@@ -226,8 +236,8 @@ class DemonstrationDataset(Dataset):
             (1, 0, 1)  # full right
         ]
 
-        self.action_mapping = {i: x for i, x in enumerate(action_mapping)}             
-        self.act_to_idx = {x: i for i, x in enumerate(action_mapping)}             
+        self.action_mapping = {i: x for i, x in enumerate(action_mapping)}
+        self.act_to_idx = {x: i for i, x in enumerate(action_mapping)}
 
     def __len__(self):
         return self.frames.shape[0] - self.img_stack
@@ -244,7 +254,7 @@ class DemonstrationDataset(Dataset):
     def append(self, frame, action):
         self.frames = np.append(self.frames, frame, axis=0)
         self.actions = np.append(self.actions, action, axis=0)
-
+# Hello :)
 
 def inspect_data():
     # Action Statistics
@@ -254,31 +264,29 @@ def inspect_data():
     plt.hist([act_to_idx[tuple(action)] for action in dataset.actions], bins=list(range(25)))
     plt.show()
 
+    # Visualize random frames
+    idx = np.random.randint(len(dataset))
+    frame, action = dataset[idx]
+    print("Action: {}".format(action))
+    print_action(dataset, action)
+    plt.axis("off")
+    plt.imshow(dataset[idx][0][0])
+    plt.show()
+
+    # release memory
+    del dataset
 
 
-# Visualize random frames
-idx = np.random.randint(len(dataset))
-frame, action = dataset[idx]
-print("Action: {}".format(action))
-print_action(dataset, action)
-plt.axis("off")
-plt.imshow(dataset[idx][0][0]);
-
-
-# In[ ]:
-
-
-# release memory
-del dataset
-
-
-# # Define Policy Network
-
-# In[ ]:
-
+# inspect_data()
 
 class AgentNetwork(nn.Module):
-    def __init__(self, n_units_out):
+    def __init__(self,
+                 n_units_out,
+                 hidden_size=512,
+                 num_feature_maps=32,
+                 kernel_size=6,
+                 activation=nn.ReLU()
+                 ):
         super(AgentNetwork, self).__init__()
 
         ########################
@@ -287,10 +295,26 @@ class AgentNetwork(nn.Module):
         # Note: the input to the network is one grayscale
         # The dimension of the frames is 96x96
         # Hence, the input tensor has shape [1, 96, 96]
-        
+
         # Note 2: don't apply an activation function to the output layer
         # Our loss function implicitly applies the softmax activation
         # which is numerically more stable
+
+        num_inputs, input_width, _ = (1, 96, 96)
+
+        self.cnn_layer1 = nn.Conv2d(num_inputs, num_feature_maps, kernel_size, stride=4, padding=0)
+        self.cnn_layer2 = nn.Conv2d(num_feature_maps, num_feature_maps * 2, int(kernel_size / 2), stride=2, padding=0)
+        self.cnn_layer3 = nn.Conv2d(num_feature_maps * 2, num_feature_maps, int(kernel_size / 2), stride=1, padding=0)
+
+        feature_map_for_linear_layer = self.calculate_next_feature_map_size(
+            [self.cnn_layer1, self.cnn_layer2, self.cnn_layer3], input_width
+        )
+        assert feature_map_for_linear_layer >= 1, f"Ouch! the layer 3 feature is of size {feature_map_for_linear_layer}"
+
+        self.linear_layer = nn.Linear(num_feature_maps * feature_map_for_linear_layer ** 2, hidden_size)
+        self.activation = activation
+
+        self.output_layer = nn.Linear(hidden_size, n_units_out)
 
     def forward(self, x):
         ########################
@@ -298,17 +322,27 @@ class AgentNetwork(nn.Module):
         ########################
         # Process the batch with your defined network and
         # return action predictions
-        pass
-        
 
+        x = self.activation(self.cnn_layer1(x))
+        x = self.activation(self.cnn_layer2(x))
+        x = self.activation(self.cnn_layer3(x))
+        x = x.view(-1, x.shape[1:].numel())
+        x = self.activation(self.linear_layer(x))
 
-# # Define Training and Validation Routines
+        return self.output_layer(x)
 
-# In[ ]:
+    def calculate_next_feature_map_size(self, layers: list, feature_map_size: int):
+        """ Initially the feature_map_size is the width of the input """
+        for layer in layers:
+            padding = layer.padding[0]
+            stride = layer.stride[0]
+            kernel = layer.kernel_size[0]
+            feature_map_size = (feature_map_size - kernel + 2 * padding) / stride + 1
+        return int(feature_map_size)
 
 
 def train(net, loader, loss_func, optimizer, logger, epoch):
-    net.train()    
+    net.train()
     running_loss = None
     alpha = 0.3
     with tqdm(loader, desc="[%03d] Loss: %.4f" % (epoch, 0.)) as pbar:
@@ -316,14 +350,14 @@ def train(net, loader, loss_func, optimizer, logger, epoch):
             frame = frame.float().to(device)
             action = action.to(device)
             # prediction
-            prediction = net(frame)                       
+            prediction = net(frame)
             # loss
             loss = loss_func(prediction, action)
             # entropy
             with torch.no_grad():
                 probs = torch.softmax(prediction, dim=-1)
-                entropy = torch.mean(-torch.sum(probs * torch.log(probs), dim=-1)) 
-            # Update weights
+                entropy = torch.mean(-torch.sum(probs * torch.log(probs), dim=-1))
+                # Update weights
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -335,11 +369,12 @@ def train(net, loader, loss_func, optimizer, logger, epoch):
             pbar.set_description("[%03d] Loss: %.4f" % (epoch, running_loss))
     return frame  # serves as sample input for saving the model in ONNX format
 
+
 def val(net, loader, loss_func, logger, epoch):
     bs = loader.batch_size
     net.eval()
-    predictions = np.empty((len(loader.dataset,)), dtype=np.float32)
-    targets = np.empty((len(loader.dataset,)), dtype=np.float32)
+    predictions = np.empty((len(loader.dataset, )), dtype=np.float32)
+    targets = np.empty((len(loader.dataset, )), dtype=np.float32)
     loss_ = []
     for i, (frame, action) in enumerate(tqdm(loader, desc="[%03d] Validation" % epoch)):
         with torch.no_grad():
@@ -361,11 +396,6 @@ def val(net, loader, loss_func, logger, epoch):
     return np.mean(loss_), accuracy
 
 
-# # Train your agent
-
-# In[ ]:
-
-
 #### YOUR CODE HERE ####
 # choose your hyper-parameters
 
@@ -375,22 +405,14 @@ batchsize = 32
 n_epochs = 1
 
 
-# Load the training and validation datasets
-
-# In[ ]:
-
-
 # Datasets
 train_set = DemonstrationDataset("../data/train.npz")
-train_loader = DataLoader(train_set, batch_size=batchsize, num_workers=2, shuffle=True, drop_last=False, pin_memory=True)
+train_loader = DataLoader(train_set, batch_size=batchsize, num_workers=10, shuffle=True, drop_last=False,
+                          pin_memory=True)
 val_set = DemonstrationDataset("../data/val.npz")
-val_loader = DataLoader(val_set, batch_size=batchsize, num_workers=2, shuffle=False, drop_last=False, pin_memory=True)
-
+val_loader = DataLoader(val_set, batch_size=batchsize, num_workers=10, shuffle=False, drop_last=False, pin_memory=True)
 
 # Now we can train our first agent using Behavioral Cloning
-
-# In[ ]:
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device: " + str(device))
@@ -447,8 +469,6 @@ plot_metrics(logger)
 
 # Here we create classes for our environment and the agent.
 
-# In[ ]:
-
 
 class Env():
     """
@@ -456,7 +476,7 @@ class Env():
     """
 
     def __init__(self, img_stack=1, show_hud=True, record_video=True):
-        self.record_video=record_video
+        self.record_video = record_video
         self.gym_env = gym.make('CarRacing-v0')
         self.env = self.wrap_env(self.gym_env)
         self.action_space = self.env.action_space
@@ -477,9 +497,9 @@ class Env():
             return np.array(self.stack)
 
     def step(self, action, raw_state=False):
-        img_rgb, reward, done, _ = self.env.step(action)            
+        img_rgb, reward, done, _ = self.env.step(action)
         # accumulate reward
-        self.rewards.append(reward)            
+        self.rewards.append(reward)
         # if no reward recently, end the episode
         die = True if np.mean(self.rewards[-np.minimum(100, len(self.rewards)):]) <= -1 else False
         if done or die:
@@ -502,16 +522,18 @@ class Env():
 
     def close(self):
         self.env.close()
-        
+
     def wrap_env(self, env):
         if self.record_video:
             env = wrap_env(env)
         return env
 
+
 class Agent():
     """
     Agent for training
     """
+
     def __init__(self, net, action_mapping, img_stack=1):
         self.net = net
         self.action_mapping = action_mapping
@@ -522,21 +544,22 @@ class Agent():
         with torch.no_grad():
             action_probs = self.net(state)
             if type(action_probs) in (tuple, list):
-                action_probs = action_probs[0]            
+                action_probs = action_probs[0]
         action, action_idx, a_logp = self.sample_action(action_probs)
         a_logp = a_logp.item()
 
         return action, action_idx, a_logp
-        
+
     def sample_action(self, probs):
         m = Categorical(logits=probs.to("cpu"))
         action_idx = m.sample()
         a_logp = m.log_prob(action_idx)
         action = self.action_mapping[int(action_idx.squeeze().cpu().numpy())]
         return action, action_idx, a_logp
-    
-    def load_param(self, param_file):        
+
+    def load_param(self, param_file):
         self.net.load_state_dict(torch.load(param_file))
+
 
 def run_episode(agent, show_progress=True, record_video=True):
     env = Env(img_stack=1, record_video=record_video)
@@ -556,7 +579,7 @@ def run_episode(agent, show_progress=True, record_video=True):
             done_or_die = True
     env.close()
     if show_progress:
-        progress.close()    
+        progress.close()
     if record_video:
         show_video()
     return score
@@ -566,18 +589,13 @@ def run_episode(agent, show_progress=True, record_video=True):
 
 # Let's see how the agent is doing in the real environment
 
-# In[ ]:
-
 
 agent = Agent(net, train_set.action_mapping)
 agent.load_param(logger.param_file)
 print(logger.param_file)
 run_episode(agent, show_progress=True, record_video=True);
 
-
 # Since we often have high variance when evaluating RL agents we should evaluate the agent multiple times to get a better feeling for its performance.
-
-# In[ ]:
 
 
 n_eval_episodes = 10
@@ -585,8 +603,7 @@ scores = []
 for i in tqdm(range(n_eval_episodes), desc="Episode"):
     scores.append(run_episode(agent, show_progress=False, record_video=False))
     print("Score: %d" % scores[-1])
-print("Mean Score: %.2f (Std: %.2f)" %(np.mean(scores), np.std(scores)))
-
+print("Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
 
 # # DAGGER
 
@@ -596,12 +613,12 @@ print("Mean Score: %.2f (Std: %.2f)" %(np.mean(scores), np.std(scores)))
 
 # ## Load the expert
 
-# In[ ]:
-
 
 # Load expert
-expert_net = ConvertModel(onnx.load("expert.onnx"))
+expert_net = ConvertModel(onnx.load("../data/expert.onnx"))
 expert_net = expert_net.to(device)
+
+
 # Freeze expert weights
 for p in expert_net.parameters():
     p.requires_grad = False
@@ -615,9 +632,6 @@ for p in expert_net.parameters():
 # 3. Label the gathered states with the expert
 # 
 # The aggregation and training part are already implemented.
-
-# In[ ]:
-
 
 # inner loop of DAgger
 def dagger(current_policy, expert_policy, beta=1.):
@@ -642,26 +656,26 @@ def dagger(current_policy, expert_policy, beta=1.):
     #        in the correct format regardless of the chosen policy
     # 3) Label the states of this trajectory with your expert
     #     -> the expert policy always expects 4 frames, pass the state as "np.array(state_log)"
-    
-    #1: Choose policy
-    
+
+    # 1: Choose policy
+
     #### YOUR CODE HERE ####    
-    
+
     done_or_die = False
-    while not done_or_die:        
-        #2: Sample trajectory:
+    while not done_or_die:
+        # 2: Sample trajectory:
         #   -> select action
         #   -> perform action in the environment
         #   -> pass "raw_state=True" to env.step() so you can record the 
         #      original frames without pre-processing (which we need to aggregate datasets later)
-        
+
         #### YOUR CODE HERE ####
-             
+
         # Always keep the last four frames in the log as we need them for the expert
         state_log.pop(0)
         state_log.append(state.squeeze())
 
-        #3: label the current state with the expert policy
+        # 3: label the current state with the expert policy
 
         #### YOUR CODE HERE ####
 
@@ -672,13 +686,11 @@ def dagger(current_policy, expert_policy, beta=1.):
         # Check when you're done
         if done or die:
             done_or_die = True
-    env.close()    
+    env.close()
     return np.array(frame_log), np.array(action_log)
 
 
 # Now train the agent again using the DAgger algorithm.
-
-# In[ ]:
 
 
 #### YOUR CODE HERE ####
@@ -694,8 +706,8 @@ logger = Logger("logdir_dagger")
 print("Saving state to {}".format(logger.basepath))
 
 # Re-load datasets (since we change the dataset during DAgger training)
-train_set = DemonstrationDataset("train.npz", img_stack=1)
-val_set = DemonstrationDataset("val.npz", img_stack=1)
+train_set = DemonstrationDataset("../data/train.npz", img_stack=1)
+val_set = DemonstrationDataset("../data/val.npz", img_stack=1)
 train_loader = DataLoader(train_set, batch_size=batchsize, num_workers=2, shuffle=True, drop_last=False, pin_memory=True)
 val_loader = DataLoader(val_set, batch_size=batchsize, num_workers=2, shuffle=False, drop_last=False, pin_memory=True)
 
@@ -715,7 +727,7 @@ optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_d
 # Training
 val_loss, val_acc = val(net, val_loader, loss_func, logger, 0)
 for i_ep in range(n_epochs):
-    clear_output(wait=True)    
+    clear_output(wait=True)
     print("Saving state to {}".format(logger.basepath))
     print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep, val_loss, val_acc))
     # create new samples using our expert    
@@ -733,7 +745,7 @@ for i_ep in range(n_epochs):
     sample_frame = train(net, train_loader, loss_func, optimizer, logger, i_ep + 1)
 
     # validate
-    val_loss, val_acc = val(net, val_loader, loss_func, logger, i_ep + 1)    
+    val_loss, val_acc = val(net, val_loader, loss_func, logger, i_ep + 1)
 
     # store logs
     logger.dump()
@@ -748,20 +760,14 @@ print("Saved state to {}".format(logger.basepath))
 print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep + 1, val_loss, val_acc))
 plot_metrics(logger)
 
-
-# ## Evaluate DAgger Agent 
+# ## Evaluate DAgger Agent
 
 # If you successfully implemented your agent and the DAgger algorithm you can now upload your submission.
 # 
 # First, lets check how the agent performs.
 
-# In[ ]:
-
 
 run_episode(train_agent, show_progress=True, record_video=True);
-
-
-# In[ ]:
 
 
 n_eval_episodes = 10
@@ -769,5 +775,4 @@ scores = []
 for i in tqdm(range(n_eval_episodes), desc="Episode"):
     scores.append(run_episode(train_agent, show_progress=False, record_video=False))
     print("Score: %d" % scores[-1])
-print("Mean Score: %.2f (Std: %.2f)" %(np.mean(scores), np.std(scores)))
-
+print("Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
