@@ -254,6 +254,8 @@ class DemonstrationDataset(Dataset):
     def append(self, frame, action):
         self.frames = np.append(self.frames, frame, axis=0)
         self.actions = np.append(self.actions, action, axis=0)
+
+
 # Hello :)
 
 def inspect_data():
@@ -404,7 +406,6 @@ weight_decay = 0.1
 batchsize = 32
 n_epochs = 1
 
-
 # Datasets
 train_set = DemonstrationDataset("../data/train.npz")
 train_loader = DataLoader(train_set, batch_size=batchsize, num_workers=10, shuffle=True, drop_last=False,
@@ -455,7 +456,6 @@ for i_ep in range(n_epochs):
 # Export agent as ONNX file
 save_as_onnx(net, sample_frame, logger.onnx_file)
 
-# --
 clear_output(wait=True)
 print("Trainable Parameters: {}".format(num_trainable_params))
 print("Saved state to {}".format(logger.basepath))
@@ -618,7 +618,6 @@ print("Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
 expert_net = ConvertModel(onnx.load("../data/expert.onnx"))
 expert_net = expert_net.to(device)
 
-
 # Freeze expert weights
 for p in expert_net.parameters():
     p.requires_grad = False
@@ -634,7 +633,7 @@ for p in expert_net.parameters():
 # The aggregation and training part are already implemented.
 
 # inner loop of DAgger
-def dagger(current_policy, expert_policy, beta=1.):
+def dagger(current_policy, expert_policy, beta=1., t_steps_trajectories=10):
     # Set up environment and result lists
     env = Env(img_stack=1, record_video=False)
     state = env.reset()
@@ -659,7 +658,14 @@ def dagger(current_policy, expert_policy, beta=1.):
 
     # 1: Choose policy
 
-    #### YOUR CODE HERE ####    
+    def choose_policy():
+        prob = np.random.uniform()
+        if prob <= beta:
+            return expert_policy
+        else:
+            return current_policy
+
+    policy = choose_policy()
 
     done_or_die = False
     while not done_or_die:
@@ -671,6 +677,12 @@ def dagger(current_policy, expert_policy, beta=1.):
 
         #### YOUR CODE HERE ####
 
+        current_action = policy.select_action(state)
+        state, r, done, die, frame = env.step(current_action, raw_state=True)
+
+        state_log.append(raw_state)
+        state = prepare_state_for_policy(policy, state_log)
+
         # Always keep the last four frames in the log as we need them for the expert
         state_log.pop(0)
         state_log.append(state.squeeze())
@@ -678,6 +690,9 @@ def dagger(current_policy, expert_policy, beta=1.):
         # 3: label the current state with the expert policy
 
         #### YOUR CODE HERE ####
+
+        raw_state = np.array(frame_log)
+        expert_action = expert_policy(raw_state)
 
         # Keep a record of states and actions so we can use them for training our agent
         frame_log.append(raw_state)
@@ -695,11 +710,11 @@ def dagger(current_policy, expert_policy, beta=1.):
 
 #### YOUR CODE HERE ####
 # choose your hyper-parameters
-beta = ...
-learning_rate = ...
-wight_decay = ...
-n_epochs = ...
-n_dagger_iterations = ...
+beta = 0.7
+learning_rate = 0.001
+wight_decay = 0.1
+n_epochs = 1
+n_dagger_iterations = 1
 
 # Specify the google drive mount here if you want to store logs and weights there (and set it up earlier)
 logger = Logger("logdir_dagger")
@@ -708,7 +723,8 @@ print("Saving state to {}".format(logger.basepath))
 # Re-load datasets (since we change the dataset during DAgger training)
 train_set = DemonstrationDataset("../data/train.npz", img_stack=1)
 val_set = DemonstrationDataset("../data/val.npz", img_stack=1)
-train_loader = DataLoader(train_set, batch_size=batchsize, num_workers=2, shuffle=True, drop_last=False, pin_memory=True)
+train_loader = DataLoader(train_set, batch_size=batchsize, num_workers=2, shuffle=True, drop_last=False,
+                          pin_memory=True)
 val_loader = DataLoader(val_set, batch_size=batchsize, num_workers=2, shuffle=False, drop_last=False, pin_memory=True)
 
 # Your own policy network
@@ -753,8 +769,8 @@ for i_ep in range(n_epochs):
     torch.save(net.state_dict(), logger.param_file)
 
 # store the dagger agent
-save_as_onnx(net, sample_frame, logger.onnx_file)
-# --
+# save_as_onnx(net, sample_frame, logger.onnx_file)
+
 clear_output(wait=True)
 print("Saved state to {}".format(logger.basepath))
 print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep + 1, val_loss, val_acc))
@@ -768,7 +784,6 @@ plot_metrics(logger)
 
 
 run_episode(train_agent, show_progress=True, record_video=True);
-
 
 n_eval_episodes = 10
 scores = []
