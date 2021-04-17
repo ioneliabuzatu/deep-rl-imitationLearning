@@ -40,12 +40,12 @@ from IPython.display import HTML, clear_output
 from IPython import display
 
 # start virtual display
-# from pyvirtualdisplay import Display
+from pyvirtualdisplay import Display
 
-# pydisplay = Display(visible=0, size=(640, 480))
-# pydisplay.start()
+pydisplay = Display(visible=0, size=(640, 480))
+pydisplay.start()
 
-os.system("makedir -p ./data")
+os.system("mkdir -p ./data")
 if not os.path.exists("./data/train.npz"):
     os.system("wget --no-check-certificate 'https://cloud.ml.jku.at/s/9KRoE8s9c6WccDL/download' -O train.npz")
     os.system("wget --no-check-certificate 'https://cloud.ml.jku.at/s/Dx2Bgy5Sb6R8xTw/download' -O val.npz")
@@ -271,7 +271,7 @@ class AgentNetwork(nn.Module):
                  hidden_size=512,
                  num_feature_maps=32,
                  kernel_size=6,
-                 activation=nn.ReLU()
+                 activation=nn.LeakyReLU()
                  ):
         super(AgentNetwork, self).__init__()
 
@@ -288,17 +288,19 @@ class AgentNetwork(nn.Module):
 
         num_inputs, input_width, _ = (1, 96, 96)
 
-        self.cnn_layer1 = nn.Conv2d(num_inputs, num_feature_maps, kernel_size, stride=4, padding=0)
-        self.cnn_layer2 = nn.Conv2d(num_feature_maps, num_feature_maps * 2, int(kernel_size / 2), stride=2, padding=0)
-        self.cnn_layer3 = nn.Conv2d(num_feature_maps * 2, num_feature_maps, int(kernel_size / 2), stride=1, padding=0)
+        self.activation = activation
+
+        self.cnn_layer_1 = nn.Conv2d(num_inputs, num_feature_maps, kernel_size, stride=1, padding=0)
+        self.cnn_layer_2 = nn.Conv2d(num_feature_maps, num_feature_maps * 2, int(kernel_size / 2), stride=2, padding=0)
+        self.cnn_layer_3 = nn.Conv2d(num_feature_maps * 2, num_feature_maps, int(kernel_size / 2), stride=1, padding=0)
 
         feature_map_for_linear_layer = self.calculate_next_feature_map_size(
-            [self.cnn_layer1, self.cnn_layer2, self.cnn_layer3], input_width
+            [self.cnn_layer_1, self.cnn_layer_2, self.cnn_layer_3], input_width
         )
         assert feature_map_for_linear_layer >= 1, f"Ouch! the layer 3 feature is of size {feature_map_for_linear_layer}"
 
-        self.linear_layer = nn.Linear(num_feature_maps * feature_map_for_linear_layer ** 2, hidden_size)
-        self.activation = activation
+        self.linear_layer_1 = nn.Linear(num_feature_maps * feature_map_for_linear_layer ** 2, hidden_size)
+        # self.linear_layer_3 = nn.Linear(hidden_size, hidden_size)
 
         self.output_layer = nn.Linear(hidden_size, n_units_out)
 
@@ -309,11 +311,11 @@ class AgentNetwork(nn.Module):
         # Process the batch with your defined network and
         # return action predictions
 
-        x = self.activation(self.cnn_layer1(x))
-        x = self.activation(self.cnn_layer2(x))
-        x = self.activation(self.cnn_layer3(x))
+        x = self.activation(self.cnn_layer_1(x))
+        x = self.activation(self.cnn_layer_2(x))
+        x = self.activation(self.cnn_layer_3(x))
         x = x.view(-1, x.shape[1:].numel())
-        x = self.activation(self.linear_layer(x))
+        x = self.activation(self.linear_layer_1(x))
 
         return self.output_layer(x)
 
@@ -391,10 +393,10 @@ batchsize = 32
 n_epochs = 1
 
 # Datasets
-train_set = DemonstrationDataset("../data/train.npz")
+train_set = DemonstrationDataset("./data/train.npz")
 train_loader = DataLoader(train_set, batch_size=batchsize, num_workers=10, shuffle=True, drop_last=False,
                           pin_memory=True)
-val_set = DemonstrationDataset("../data/val.npz")
+val_set = DemonstrationDataset("./data/val.npz")
 val_loader = DataLoader(val_set, batch_size=batchsize, num_workers=10, shuffle=False, drop_last=False, pin_memory=True)
 
 # Now we can train our first agent using Behavioral Cloning
@@ -599,7 +601,7 @@ print("Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
 
 
 # Load expert
-expert_net = ConvertModel(onnx.load("../data/expert.onnx"))
+expert_net = ConvertModel(onnx.load("./data/expert.onnx"))
 expert_net = expert_net.to(device)
 
 # Freeze expert weights
@@ -704,8 +706,8 @@ logger = Logger("logdir_dagger")
 print("Saving state to {}".format(logger.basepath))
 
 # Re-load datasets (since we change the dataset during DAgger training)
-train_set = DemonstrationDataset("../data/train.npz", img_stack=1)
-val_set = DemonstrationDataset("../data/val.npz", img_stack=1)
+train_set = DemonstrationDataset("./data/train.npz", img_stack=1)
+val_set = DemonstrationDataset("./data/val.npz", img_stack=1)
 train_loader = DataLoader(train_set, batch_size=batchsize, num_workers=2, shuffle=True, drop_last=False,
                           pin_memory=True)
 val_loader = DataLoader(val_set, batch_size=batchsize, num_workers=2, shuffle=False, drop_last=False, pin_memory=True)

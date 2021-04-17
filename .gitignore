@@ -132,3 +132,7 @@ video
 logdir_dagger
 runs
 wandb
+data/
+*onnx*
+*npz
+wget-log
