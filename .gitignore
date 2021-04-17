@@ -129,3 +129,6 @@ dmypy.json
 .pyre/
 logdir
 video
+logdir_dagger
+runs
+wandb

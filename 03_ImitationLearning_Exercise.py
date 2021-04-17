@@ -40,10 +40,16 @@ from IPython.display import HTML, clear_output
 from IPython import display
 
 # start virtual display
-from pyvirtualdisplay import Display
+# from pyvirtualdisplay import Display
 
-pydisplay = Display(visible=0, size=(640, 480))
-pydisplay.start()
+# pydisplay = Display(visible=0, size=(640, 480))
+# pydisplay.start()
+
+os.system("makedir -p ./data")
+if not os.path.exists("./data/train.npz"):
+    os.system("wget --no-check-certificate 'https://cloud.ml.jku.at/s/9KRoE8s9c6WccDL/download' -O train.npz")
+    os.system("wget --no-check-certificate 'https://cloud.ml.jku.at/s/Dx2Bgy5Sb6R8xTw/download' -O val.npz")
+    os.system("wget --no-check-certificate 'https://cloud.ml.jku.at/s/26Hpzm3q2WgfRi8/download' -O expert.onnx")
 
 
 class Logger():
@@ -258,28 +264,6 @@ class DemonstrationDataset(Dataset):
 
 # Hello :)
 
-def inspect_data():
-    # Action Statistics
-    dataset = DemonstrationDataset("../data/train.npz")
-    print("Number of samples: {}".format(len(dataset)))
-    act_to_idx = {v: k for k, v in dataset.action_mapping.items()}
-    plt.hist([act_to_idx[tuple(action)] for action in dataset.actions], bins=list(range(25)))
-    plt.show()
-
-    # Visualize random frames
-    idx = np.random.randint(len(dataset))
-    frame, action = dataset[idx]
-    print("Action: {}".format(action))
-    print_action(dataset, action)
-    plt.axis("off")
-    plt.imshow(dataset[idx][0][0])
-    plt.show()
-
-    # release memory
-    del dataset
-
-
-# inspect_data()
 
 class AgentNetwork(nn.Module):
     def __init__(self,
@@ -453,7 +437,7 @@ for i_ep in range(n_epochs):
     # store weights
     torch.save(net.state_dict(), logger.param_file)
 
-# Export agent as ONNX file
+# # Export agent as ONNX file
 save_as_onnx(net, sample_frame, logger.onnx_file)
 
 clear_output(wait=True)
@@ -677,11 +661,9 @@ def dagger(current_policy, expert_policy, beta=1., t_steps_trajectories=10):
 
         #### YOUR CODE HERE ####
 
-        current_action = policy.select_action(state)
-        state, r, done, die, frame = env.step(current_action, raw_state=True)
-
-        state_log.append(raw_state)
         state = prepare_state_for_policy(policy, state_log)
+        current_action, action_idx, a_logp = policy.select_action(state)
+        state, r, done, die, frame = env.step(current_action, raw_state=True)
 
         # Always keep the last four frames in the log as we need them for the expert
         state_log.pop(0)
@@ -691,16 +673,17 @@ def dagger(current_policy, expert_policy, beta=1., t_steps_trajectories=10):
 
         #### YOUR CODE HERE ####
 
-        raw_state = np.array(frame_log)
-        expert_action = expert_policy(raw_state)
+        raw_state = np.array(state_log)
+        expert_action, action_idx, a_logp = expert_policy.select_action(raw_state)
 
         # Keep a record of states and actions so we can use them for training our agent
-        frame_log.append(raw_state)
+        frame_log.append(frame)
         action_log.append(expert_action)
 
         # Check when you're done
         if done or die:
             done_or_die = True
+
     env.close()
     return np.array(frame_log), np.array(action_log)
 
@@ -745,7 +728,7 @@ val_loss, val_acc = val(net, val_loader, loss_func, logger, 0)
 for i_ep in range(n_epochs):
     clear_output(wait=True)
     print("Saving state to {}".format(logger.basepath))
-    print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep, val_loss, val_acc))
+    # print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep, val_loss, val_acc))
     # create new samples using our expert    
     for _ in tqdm(range(n_dagger_iterations), desc="Generating expert samples"):
         frames, actions = dagger(train_agent, expert_agent, beta=beta)
@@ -769,7 +752,7 @@ for i_ep in range(n_epochs):
     torch.save(net.state_dict(), logger.param_file)
 
 # store the dagger agent
-# save_as_onnx(net, sample_frame, logger.onnx_file)
+save_as_onnx(net, sample_frame, logger.onnx_file)
 
 clear_output(wait=True)
 print("Saved state to {}".format(logger.basepath))
