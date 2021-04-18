@@ -1,6 +1,5 @@
 pyvirtualdisplay
 box2d-py
-gym[box2d]
 onnx
 onnx2pytorch
 tqdm
