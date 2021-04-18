@@ -202,8 +202,8 @@ class Env():
         self.rewards.append(reward)
         # if no reward recently, end the episode
         die = True if np.mean(self.rewards[-np.minimum(100, len(self.rewards)):]) <= -1 else False
-        # if done or die:
-        #     self.env.close()
+        if done or die:
+            self.env.close()
         img_gray = rgb2gray(img_rgb)
         if not self.show_hud:
             img_gray = hide_hud(img_gray)
