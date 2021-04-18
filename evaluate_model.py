@@ -10,6 +10,8 @@ from utils import DemonstrationDataset
 from utils import run_episode
 import config
 
+wandb.run = config.tensorboard.run
+
 
 class AgentNetwork(nn.Module):
     def __init__(self,
@@ -69,26 +71,23 @@ def evaluate_model(model_weights_pkl):
     scores = []
     for i in tqdm(range(20), desc="Episode"):
         scores.append(run_episode(train_agent, show_progress=False, record_video=False))
-        wandb.log({"Ten runs evaluation": scores[-1]}, step=i)
+        wandb.log({"Ten runs evaluation": np.mean(scores)}, step=i)
     print("Final Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
 
 
-wandb.run = config.tensorboard.run
 if os.path.exists("./logdir_dagger/2021-04-18T13-20-20/params.pkl"):
     param_file = [
-        "./logdir_dagger/2021-04-18T13-20-20/params.pkl",
-        "./logdir_dagger/2021-04-17T11-58-56/params.pkl",
-        "./logdir_dagger/2021-04-17T11-48-15/params.pkl",
-        "./logdir_dagger/2021-04-17T12-08-11/params.pkl",
+        # "./logdir_dagger/2021-04-18T13-20-20/params.pkl",
+        # "./logdir_dagger/2021-04-17T11-58-56/params.pkl",
+        # "./logdir_dagger/2021-04-17T12-08-11/params.pkl",
         "./logdir_dagger/2021-04-17T10-25-46/params.pkl",
-        "./logdir_dagger/2021-04-17T09-30-38/params.pkl"
+        # "./logdir_dagger/2021-04-17T09-30-38/params.pkl"
     ]
 elif os.path.exists("/home/mila/g/golemofl/params.pkl"):
     param_file = "/home/mila/g/golemofl/params.pkl"
-    
-    
+
 if isinstance(param_file, str):
-    evaluate_model()    
+    evaluate_model()
 elif isinstance(param_file, list):
     for parameter_filepath in param_file:
-        evaluate_model(parameter_filepath)    
+        evaluate_model(parameter_filepath)
