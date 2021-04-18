@@ -1,4 +1,5 @@
 import numpy as np
+import wandb
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -68,5 +69,6 @@ n_eval_episodes = 10
 scores = []
 for i in tqdm(range(n_eval_episodes), desc="Episode"):
     scores.append(run_episode(train_agent, show_progress=False, record_video=False))
+    wandb.log({"Ten runs evaluation": scores[-1]}, step=i)
     print("... mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
 print("Final Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))

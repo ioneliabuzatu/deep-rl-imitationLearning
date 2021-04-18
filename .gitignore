@@ -135,6 +135,5 @@ wandb
 data/expert.onnx
 data/val.npz
 *onnx*
-*npz
 wget-log
 monitor_car
