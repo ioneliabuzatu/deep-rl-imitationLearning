@@ -132,7 +132,9 @@ video
 logdir_dagger
 runs
 wandb
-data/
+data/expert.onnx
+data/val.npz
 *onnx*
 *npz
 wget-log
+monitor_car
