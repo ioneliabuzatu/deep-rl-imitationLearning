@@ -26,6 +26,10 @@ wandb.run = config.tensorboard.run
 
 sns.set()
 
+from pyvirtualdisplay import Display
+pydisplay = Display(visible=0, size=(640, 480))
+pydisplay.start()
+
 if os.path.exists("./data/val.npz"):
     expert_onnx_filepath = "./data/expert.onnx"
     train_npz_filepath = "./data/train.npz"
@@ -218,6 +222,8 @@ for i_ep in range(n_epochs):
     logger.dump()
     if i_ep % 1 == 0:
         torch.save(net.state_dict(), logger.param_file)
+        save_as_onnx(net, sample_frame, logger.onnx_file)
+        wandb.save(logger.onnx_file)
     if i_ep % 1 == 0:
         run_episode(train_agent, show_progress=False, record_video=False)
 
