@@ -1,56 +1,26 @@
 import os
-from utils import run_episode
-from utils import print_action
-from utils import Logger
-from utils import plot_metrics
-import sys
-import math
-import glob
-import io
-import base64
-import random
+
 import numpy as np
-from time import time, strftime
-# from tqdm.notebook import tqdm
-from tqdm import tqdm
-
-# PyTorch imports
-import torch
-import torch.optim as optim
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-from torch.distributions import Categorical
-from torchvision.transforms import Compose
-
-# ONNX
 import onnx
+import seaborn as sns
+import torch
+import torch.nn as nn
+import torch.optim as optim
 from onnx2pytorch import ConvertModel
-
-# Environment import and set logger level to display error only
-import gym
-from gym import logger as gymlogger
-from gym.wrappers import Monitor
-
-gymlogger.set_level(40)  # error only
-
-# Plotting and notebook imports
-import matplotlib.pyplot as plt
-from matplotlib import animation
-import seaborn as sns;
-
-sns.set()
-from IPython.display import HTML, clear_output
-from IPython import display
-# start virtual display
-from pyvirtualdisplay import Display
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from utils import Agent
 from utils import DemonstrationDataset
 from utils import Env
+from utils import Logger
+from utils import plot_metrics
+from utils import run_episode
+from utils import save_as_onnx
 from utils import train
 from utils import val
-from utils import save_as_onnx
+
+sns.set()
 
 os.system("mkdir -p ./data")
 if not os.path.exists("./data/train.npz"):
@@ -82,8 +52,7 @@ class AgentNetwork(nn.Module):
         )
         assert feature_map_for_linear_layer >= 1, f"Ouch! the layer 3 feature is of size {feature_map_for_linear_layer}"
 
-        self.linear_layer_1 = nn.Linear(num_feature_maps * feature_map_for_linear_layer ** 2, hidden_size)
-        # self.linear_layer_3 = nn.Linear(hidden_size, hidden_size)
+        self.linear_layer_1 = nn.Linear(num_feature_maps * feature_map_for_linear_layer**2, n_units_out)
 
         self.output_layer = nn.Linear(hidden_size, n_units_out)
 
@@ -92,9 +61,9 @@ class AgentNetwork(nn.Module):
         x = self.activation(self.cnn_layer_2(x))
         x = self.activation(self.cnn_layer_3(x))
         x = x.view(-1, x.shape[1:].numel())
-        x = self.activation(self.linear_layer_1(x))
-
-        return self.output_layer(x)
+        # x = self.activation(self.linear_layer_1(x))
+        return self.linear_layer_1(x)
+        # return self.output_layer(x)
 
     @staticmethod
     def calculate_next_feature_map_size(layers: list, feature_map_size: int):
@@ -107,119 +76,7 @@ class AgentNetwork(nn.Module):
         return int(feature_map_size)
 
 
-learning_rate = 0.001
-weight_decay = 0.1
-batch_size = 32
-n_epochs = 1
-
-# Datasets
-train_set = DemonstrationDataset("./data/train.npz")
-train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=10, shuffle=True, drop_last=False,
-                          pin_memory=True)
-val_set = DemonstrationDataset("./data/val.npz")
-val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=10, shuffle=False, drop_last=False, pin_memory=True)
-
-# Now we can train our first agent using Behavioral Cloning
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Device: " + str(device))
-
-# Specify the google drive mount here if you want to store logs and weights there (and set it up earlier)
-logger = Logger("logdir")
-print("Saving state to {}".format(logger.basepath))
-
-# Network
-net = AgentNetwork(n_units_out=len(train_set.action_mapping))
-net = net.to(device)
-num_trainable_params = sum(p.numel() for p in net.parameters() if p.requires_grad)
-print("Trainable Parameters: {}".format(num_trainable_params))
-
-# Loss
-loss_func = nn.CrossEntropyLoss().to(device)
-
-# Optimizer
-optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_decay)
-
-# Training
-val_loss, val_acc = val(net, val_loader, loss_func, logger, 0, device)
-for i_ep in range(n_epochs):
-    clear_output(wait=True)
-    print("Trainable Parameters: {}".format(num_trainable_params))
-    print("Saving state to {}".format(logger.basepath))
-    print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep, val_loss, val_acc))
-    # plot current training state
-    if i_ep > 0:
-        plot_metrics(logger)
-    # train
-    sample_frame = train(net, train_loader, loss_func, optimizer, logger, i_ep + 1, device)
-    # validate
-    val_loss, val_acc = val(net, val_loader, loss_func, logger, i_ep + 1, device)
-    # store logs
-    logger.dump()
-    # store weights
-    torch.save(net.state_dict(), logger.param_file)
-
-# # Export agent as ONNX file
-print(f"saving some model {logger.onnx_file}")
-save_as_onnx(net, sample_frame, logger.onnx_file)
-
-clear_output(wait=True)
-print("Trainable Parameters: {}".format(num_trainable_params))
-print("Saved state to {}".format(logger.basepath))
-print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep + 1, val_loss, val_acc))
-plot_metrics(logger)
-
-# # Evaluate the agent in the real environment
-
-# ### Environment and Agent
-
-# Here we create classes for our environment and the agent.
-
-
-# ## Evaluate behavioral cloning agent
-
-# Let's see how the agent is doing in the real environment
-
-
-agent = Agent(net, train_set.action_mapping, device)
-agent.load_param(logger.param_file)
-print(logger.param_file)
-run_episode(agent, show_progress=True, record_video=True);
-
-# Since we often have high variance when evaluating RL agents we should evaluate the agent multiple times to get a better feeling for its performance.
-
-
-n_eval_episodes = 10
-scores = []
-for i in tqdm(range(n_eval_episodes), desc="Episode"):
-    scores.append(run_episode(agent, show_progress=False, record_video=False))
-    print("Score: %d" % scores[-1])
-print("Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
-
-# # DAGGER
-
-# Now we can implement DAgger, you have downloaded a relatively well trained model you can use as an expert for this purpose.
-
-# Load expert
-expert_net = ConvertModel(onnx.load("./data/expert.onnx"))
-expert_net = expert_net.to(device)
-
-# Freeze expert weights
-for p in expert_net.parameters():
-    p.requires_grad = False
-
-
-# Next, you have to implement the DAgger algorithm (see slides for details). This function implements the core idea of DAgger:
-# 
-# 
-# 1. Choose the policy with probability beta
-# 2. Sample T-step trajectories using this policy
-# 3. Label the gathered states with the expert
-# 
-# The aggregation and training part are already implemented.
-
-# inner loop of DAgger
-def dagger(current_policy, expert_policy, beta=1., t_steps_trajectories=10):
+def dagger(current_policy, expert_policy, beta=1.):
     # Set up environment and result lists
     env = Env(img_stack=1, record_video=False)
     state = env.reset()
@@ -290,31 +147,38 @@ def dagger(current_policy, expert_policy, beta=1., t_steps_trajectories=10):
     return np.array(frame_log), np.array(action_log)
 
 
-# Now train the agent again using the DAgger algorithm.
-
-
-#### YOUR CODE HERE ####
-# choose your hyper-parameters
 beta = 0.7
 learning_rate = 0.001
-wight_decay = 0.1
+weight_decay = 0.1
 n_epochs = 1
 n_dagger_iterations = 1
+batch_size = 32
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Device: " + str(device))
+
+# Load expert
+expert_net = ConvertModel(onnx.load("./data/expert.onnx"))
+expert_net = expert_net.to(device)
+
+# Freeze expert weights
+for p in expert_net.parameters():
+    p.requires_grad = False
 
 # Specify the google drive mount here if you want to store logs and weights there (and set it up earlier)
 logger = Logger("logdir_dagger")
 print("Saving state to {}".format(logger.basepath))
 
-# Re-load datasets (since we change the dataset during DAgger training)
 train_set = DemonstrationDataset("./data/train.npz", img_stack=1)
 val_set = DemonstrationDataset("./data/val.npz", img_stack=1)
 train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=2, shuffle=True, drop_last=False,
                           pin_memory=True)
 val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=2, shuffle=False, drop_last=False, pin_memory=True)
 
-# Your own policy network
 net = AgentNetwork(n_units_out=len(train_set.action_mapping))
 net = net.to(device)
+num_trainable_params = sum(p.numel() for p in net.parameters() if p.requires_grad)
+print("Trainable Parameters: {}".format(num_trainable_params))
 
 train_agent = Agent(net, train_set.action_mapping, device, img_stack=1)
 expert_agent = Agent(expert_net, train_set.action_mapping, device, img_stack=4)
@@ -326,7 +190,6 @@ optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_d
 # Training
 val_loss, val_acc = val(net, val_loader, loss_func, logger, 0, device)
 for i_ep in range(n_epochs):
-    clear_output(wait=True)
     print("Saving state to {}".format(logger.basepath))
     # print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep, val_loss, val_acc))
     # create new samples using our expert    
@@ -355,19 +218,11 @@ for i_ep in range(n_epochs):
 print(f"Saving the onnx model: {logger.onnx_file}")
 save_as_onnx(net, sample_frame, logger.onnx_file)
 
-clear_output(wait=True)
 print("Saved state to {}".format(logger.basepath))
 print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep + 1, val_loss, val_acc))
 plot_metrics(logger)
 
-# ## Evaluate DAgger Agent
-
-# If you successfully implemented your agent and the DAgger algorithm you can now upload your submission.
-# 
-# First, lets check how the agent performs.
-
-
-run_episode(train_agent, show_progress=True, record_video=True);
+run_episode(train_agent, show_progress=True, record_video=True)
 
 n_eval_episodes = 10
 scores = []
