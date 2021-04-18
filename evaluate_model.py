@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import wandb
 import torch
 import torch.nn as nn
@@ -58,17 +59,20 @@ class AgentNetwork(nn.Module):
 
 
 wandb.run = config.tensorboard.run
-param_file = "./logdir_dagger/2021-04-18T13-20-20/params.pkl"
+
+if os.path.exists("./logdir_dagger/2021-04-18T13-20-20/params.pkl"):
+    param_file = "./logdir_dagger/2021-04-18T13-20-20/params.pkl"
+elif os.path.exists("/home/mila/g/golemofl/params.pkl"):
+    param_file = "/home/mila/g/golemofl/params.pkl"
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device: " + str(device))
 train_set = DemonstrationDataset("./data/train.npz", img_stack=1)
-net = AgentNetwork(n_units_out=len(train_set.action_mapping))
-net = net.to(device)
+net = AgentNetwork(n_units_out=len(train_set.action_mapping)).to(device)
 train_agent = Agent(net, train_set.action_mapping, device, img_stack=1)
 train_agent.load_param(param_file)
-n_eval_episodes = 10
 scores = []
-for i in tqdm(range(n_eval_episodes), desc="Episode"):
+for i in tqdm(range(10), desc="Episode"):
     scores.append(run_episode(train_agent, show_progress=False, record_video=False))
     wandb.log({"Ten runs evaluation": scores[-1]}, step=i)
 print("Final Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
