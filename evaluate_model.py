@@ -58,21 +58,36 @@ class AgentNetwork(nn.Module):
         return int(feature_map_size)
 
 
-wandb.run = config.tensorboard.run
+def evaluate_model(model_weights_pkl):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Device: " + str(device))
+    train_set = DemonstrationDataset("./data/train.npz", img_stack=1)
+    net = AgentNetwork(n_units_out=len(train_set.action_mapping)).to(device)
+    train_agent = Agent(net, train_set.action_mapping, device, img_stack=1)
+    train_agent.load_param(model_weights_pkl)
+    scores = []
+    for i in tqdm(range(20), desc="Episode"):
+        scores.append(run_episode(train_agent, show_progress=False, record_video=False))
+        wandb.log({"Ten runs evaluation": scores[-1]}, step=i)
+    print("Final Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
 
+
+wandb.run = config.tensorboard.run
 if os.path.exists("./logdir_dagger/2021-04-18T13-20-20/params.pkl"):
-    param_file = "./logdir_dagger/2021-04-18T13-20-20/params.pkl"
+    param_file = [
+        "./logdir_dagger/2021-04-18T13-20-20/params.pkl",
+        "./logdir_dagger/2021-04-17T11-58-56/params.pkl",
+        "./logdir_dagger/2021-04-17T11-48-15/params.pkl",
+        "./logdir_dagger/2021-04-17T12-08-11/params.pkl",
+        "./logdir_dagger/2021-04-17T10-25-46/params.pkl",
+        "./logdir_dagger/2021-04-17T09-30-38/params.pkl"
+    ]
 elif os.path.exists("/home/mila/g/golemofl/params.pkl"):
     param_file = "/home/mila/g/golemofl/params.pkl"
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Device: " + str(device))
-train_set = DemonstrationDataset("./data/train.npz", img_stack=1)
-net = AgentNetwork(n_units_out=len(train_set.action_mapping)).to(device)
-train_agent = Agent(net, train_set.action_mapping, device, img_stack=1)
-train_agent.load_param(param_file)
-scores = []
-for i in tqdm(range(10), desc="Episode"):
-    scores.append(run_episode(train_agent, show_progress=False, record_video=False))
-    wandb.log({"Ten runs evaluation": scores[-1]}, step=i)
-print("Final Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
+    
+    
+if isinstance(param_file, str):
+    evaluate_model()    
+elif isinstance(param_file, list):
+    for parameter_filepath in param_file:
+        evaluate_model(parameter_filepath)    
