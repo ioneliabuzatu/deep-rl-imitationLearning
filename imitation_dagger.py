@@ -199,7 +199,6 @@ train_agent = Agent(net, train_set.action_mapping, device, img_stack=1)
 # train_agent.load_param("logdir_dagger/2021-04-18T13-20-20/params.pkl")
 expert_agent = Agent(expert_net, train_set.action_mapping, device, img_stack=4)
 
-val_loss, val_acc = val(net, val_loader, loss_func, logger, 0, device)
 for i_ep in range(n_epochs):
     print("Saving state to {}".format(logger.basepath))
     for _ in tqdm(range(n_dagger_iterations), desc="Generating expert samples"):
