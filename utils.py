@@ -175,10 +175,8 @@ class Env():
     """
 
     def __init__(self, img_stack=1, show_hud=True, record_video=True):
-        from gym import wrappers
         self.record_video = record_video
         self.gym_env = gym.make('CarRacing-v0')
-        self.gym_env = wrappers.Monitor(self.gym_env, "./monitor_car", video_callable=False, force=True)
         self.env = self.wrap_env(self.gym_env)
         self.action_space = self.env.action_space
         self.img_stack = img_stack
@@ -186,7 +184,6 @@ class Env():
 
     def reset(self, raw_state=False):
         self.env = self.wrap_env(self.gym_env)
-        # self.gym_env = wrappers.Monitor(self.gym_env, "./monitor_car", video_callable=False, force=True)
         self.rewards = []
         disable_view_window()
         img_rgb = self.env.reset()

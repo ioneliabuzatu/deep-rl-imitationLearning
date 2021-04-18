@@ -26,6 +26,7 @@ wandb.run = config.tensorboard.run
 
 sns.set()
 
+
 if os.path.exists("./data/val.npz"):
     expert_onnx_filepath = "./data/expert.onnx"
     train_npz_filepath = "./data/train.npz"
@@ -195,6 +196,7 @@ optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_d
 #     val_loss, val_acc = val(net, val_loader, loss_func, logger, i_ep + 1, device)
 
 train_agent = Agent(net, train_set.action_mapping, device, img_stack=1)
+# train_agent.load_param("logdir_dagger/2021-04-18T13-20-20/params.pkl")
 expert_agent = Agent(expert_net, train_set.action_mapping, device, img_stack=4)
 
 val_loss, val_acc = val(net, val_loader, loss_func, logger, 0, device)
@@ -216,11 +218,14 @@ for i_ep in range(n_epochs):
 
     # store logs
     logger.dump()
-    if i_ep % 1 == 0:
+    if i_ep % 2 == 0:
         torch.save(net.state_dict(), logger.param_file)
-    if i_ep % 1 == 0:
-        run_episode(train_agent, show_progress=False, record_video=False)
-
+        save_as_onnx(net, sample_frame, logger.onnx_file)
+        wandb.save(logger.param_file)
+        wandb.save(logger.onnx_file)
+    # if i_ep % 1 == 0:
+    #     score_epoch = run_episode(train_agent, show_progress=False, record_video=False)
+    #     print(f"score spoch {i_ep} : {score_epoch}")
 
 # store the dagger agent
 print(f"Saving the onnx model: {logger.onnx_file}")
