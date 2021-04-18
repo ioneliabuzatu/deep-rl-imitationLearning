@@ -220,7 +220,8 @@ class Env():
             return np.array(self.stack), np.sum(self.rewards[-1]), done, die
 
     def render(self, *arg):
-        return self.env.render(*arg)
+        pass
+        # return self.env.render(*arg)
 
     def close(self):
         self.env.close()
