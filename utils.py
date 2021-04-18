@@ -188,6 +188,7 @@ class Env():
         self.env = self.wrap_env(self.gym_env)
         # self.gym_env = wrappers.Monitor(self.gym_env, "./monitor_car", video_callable=False, force=True)
         self.rewards = []
+        disable_view_window()
         img_rgb = self.env.reset()
         img_gray = rgb2gray(img_rgb)
         if not self.show_hud:
@@ -204,8 +205,8 @@ class Env():
         self.rewards.append(reward)
         # if no reward recently, end the episode
         die = True if np.mean(self.rewards[-np.minimum(100, len(self.rewards)):]) <= -1 else False
-        if done or die:
-            self.env.close()
+        # if done or die:
+        #     self.env.close()
         img_gray = rgb2gray(img_rgb)
         if not self.show_hud:
             img_gray = hide_hud(img_gray)
@@ -220,7 +221,8 @@ class Env():
             return np.array(self.stack), np.sum(self.rewards[-1]), done, die
 
     def render(self, *arg):
-        return self.env.render(*arg)
+        pass
+        # return self.env.render(*arg)
 
     def close(self):
         self.env.close()
@@ -229,17 +231,6 @@ class Env():
         if self.record_video:
             env = wrap_env(env)
         return env
-
-
-def disable_view_window():
-    from gym.envs.classic_control import rendering
-    org_constructor = rendering.Viewer.__init__
-
-    def constructor(self, *args, **kwargs):
-        org_constructor(self, *args, **kwargs)
-        self.window.set_visible(visible=False)
-
-    rendering.Viewer.__init__ = constructor
 
 
 def plot_metrics(logger):

@@ -10,6 +10,8 @@ from onnx2pytorch import ConvertModel
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+import config
+import wandb
 from utils import Agent
 from utils import DemonstrationDataset
 from utils import Env
@@ -20,13 +22,18 @@ from utils import save_as_onnx
 from utils import train
 from utils import val
 
+wandb.run = config.tensorboard.run
+
 sns.set()
 
-os.system("mkdir -p ./data")
-if not os.path.exists("./data/train.npz"):
-    os.system("wget --no-check-certificate 'https://cloud.ml.jku.at/s/9KRoE8s9c6WccDL/download' -O train.npz")
-    os.system("wget --no-check-certificate 'https://cloud.ml.jku.at/s/Dx2Bgy5Sb6R8xTw/download' -O val.npz")
-    os.system("wget --no-check-certificate 'https://cloud.ml.jku.at/s/26Hpzm3q2WgfRi8/download' -O expert.onnx")
+if os.path.exists("./data/val.npz"):
+    expert_onnx_filepath = "./data/expert.onnx"
+    train_npz_filepath = "./data/train.npz"
+    val_npz_filepath = "./data/val.npz"
+else:
+    expert_onnx_filepath = "/home/mila/g/golemofl/data/expert.onnx"
+    train_npz_filepath = "/home/mila/g/golemofl/data/train.npz"
+    val_npz_filepath = "/home/mila/g/golemofl/data/val.npz"
 
 
 class AgentNetwork(nn.Module):
@@ -52,7 +59,7 @@ class AgentNetwork(nn.Module):
         )
         assert feature_map_for_linear_layer >= 1, f"Ouch! the layer 3 feature is of size {feature_map_for_linear_layer}"
 
-        self.linear_layer_1 = nn.Linear(num_feature_maps * feature_map_for_linear_layer**2, n_units_out)
+        self.linear_layer_1 = nn.Linear(num_feature_maps * feature_map_for_linear_layer ** 2, n_units_out)
 
         self.output_layer = nn.Linear(hidden_size, n_units_out)
 
@@ -147,19 +154,19 @@ def dagger(current_policy, expert_policy, beta=1.):
     return np.array(frame_log), np.array(action_log)
 
 
-beta = 0.7
-learning_rate = 0.001
-weight_decay = 0.1
-n_epochs = 1
-n_dagger_iterations = 1
-batch_size = 32
+beta = config.beta
+learning_rate = config.learning_rate
+weight_decay = config.weight_decay
+n_epochs = config.n_epochs
+n_dagger_iterations = config.n_dagger_iterations
+batch_size = config.batch_size
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device: " + str(device))
 
-# Load expert
-expert_net = ConvertModel(onnx.load("./data/expert.onnx"))
-expert_net = expert_net.to(device)
+loss_func = nn.CrossEntropyLoss().to(device)
+
+expert_net = ConvertModel(onnx.load(expert_onnx_filepath)).to(device)
 
 # Freeze expert weights
 for p in expert_net.parameters():
@@ -169,64 +176,63 @@ for p in expert_net.parameters():
 logger = Logger("logdir_dagger")
 print("Saving state to {}".format(logger.basepath))
 
-train_set = DemonstrationDataset("./data/train.npz", img_stack=1)
-val_set = DemonstrationDataset("./data/val.npz", img_stack=1)
+train_set = DemonstrationDataset(train_npz_filepath, img_stack=1)
+val_set = DemonstrationDataset(val_npz_filepath, img_stack=1)
 train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=2, shuffle=True, drop_last=False,
                           pin_memory=True)
 val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=2, shuffle=False, drop_last=False, pin_memory=True)
 
-net = AgentNetwork(n_units_out=len(train_set.action_mapping))
-net = net.to(device)
+net = AgentNetwork(n_units_out=len(train_set.action_mapping)).to(device)
 num_trainable_params = sum(p.numel() for p in net.parameters() if p.requires_grad)
 print("Trainable Parameters: {}".format(num_trainable_params))
+
+optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_decay)
+
+# for i_ep in range(n_epochs):
+#     if i_ep > 0:
+#         plot_metrics(logger)
+#     sample_frame = train(net, train_loader, loss_func, optimizer, logger, i_ep + 1, device)
+#     val_loss, val_acc = val(net, val_loader, loss_func, logger, i_ep + 1, device)
 
 train_agent = Agent(net, train_set.action_mapping, device, img_stack=1)
 expert_agent = Agent(expert_net, train_set.action_mapping, device, img_stack=4)
 
-loss_func = nn.CrossEntropyLoss().to(device)
-
-optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_decay)
-
-# Training
 val_loss, val_acc = val(net, val_loader, loss_func, logger, 0, device)
 for i_ep in range(n_epochs):
     print("Saving state to {}".format(logger.basepath))
-    # print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep, val_loss, val_acc))
-    # create new samples using our expert    
     for _ in tqdm(range(n_dagger_iterations), desc="Generating expert samples"):
         frames, actions = dagger(train_agent, expert_agent, beta=beta)
-        # Here we aggregate the datasets by appending the new samples
-        # to our training set
         train_set.append(frames, actions)
 
-    # plot current training state
     if i_ep > 0:
         plot_metrics(logger)
 
-    # train the agent on the aggregated dataset
     sample_frame = train(net, train_loader, loss_func, optimizer, logger, i_ep + 1, device)
 
-    # validate
     val_loss, val_acc = val(net, val_loader, loss_func, logger, i_ep + 1, device)
+
+    wandb.log({"validation loss": val_loss}, step=i_ep)
+    wandb.log({"validation accuracy": val_acc}, step=i_ep)
 
     # store logs
     logger.dump()
-    # store weights
-    torch.save(net.state_dict(), logger.param_file)
+    if i_ep % 1 == 0:
+        torch.save(net.state_dict(), logger.param_file)
+    if i_ep % 1 == 0:
+        run_episode(train_agent, show_progress=False, record_video=False)
+
 
 # store the dagger agent
 print(f"Saving the onnx model: {logger.onnx_file}")
 save_as_onnx(net, sample_frame, logger.onnx_file)
+wandb.save(logger.onnx_file)
 
 print("Saved state to {}".format(logger.basepath))
 print("[%03d] Validation Loss: %.4f Accuracy: %.4f" % (i_ep + 1, val_loss, val_acc))
 plot_metrics(logger)
 
-run_episode(train_agent, show_progress=True, record_video=True)
-
-n_eval_episodes = 10
 scores = []
-for i in tqdm(range(n_eval_episodes), desc="Episode"):
+for i in tqdm(range(50), desc="Episode"):
     scores.append(run_episode(train_agent, show_progress=False, record_video=False))
-    print("Score: %d" % scores[-1])
-print("Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
+    wandb.log({"Mean_Score_Evaluation": np.mean(scores)}, step=i)
+print("Final Mean Score and standard deviation: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
