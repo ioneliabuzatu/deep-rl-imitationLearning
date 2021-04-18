@@ -79,9 +79,7 @@ if os.path.exists("./logdir_dagger/2021-04-18T13-20-20/params.pkl"):
     param_file = [
         # "./logdir_dagger/2021-04-18T13-20-20/params.pkl",
         # "./logdir_dagger/2021-04-17T11-58-56/params.pkl",
-        # "./logdir_dagger/2021-04-17T12-08-11/params.pkl",
-        "./logdir_dagger/2021-04-17T10-25-46/params.pkl",
-        # "./logdir_dagger/2021-04-17T09-30-38/params.pkl"
+        "./logdir_dagger/2021-04-17T12-08-11/params.pkl",
     ]
 elif os.path.exists("/home/mila/g/golemofl/params.pkl"):
     param_file = "/home/mila/g/golemofl/params.pkl"

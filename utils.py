@@ -1,8 +1,15 @@
+import base64
+import glob
+import io
 import os
+from time import time, strftime
 
 import gym
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from IPython import display
+from IPython.display import HTML
 from gym.wrappers import Monitor
 from torch.distributions import Categorical
 from torch.utils.data import Dataset
@@ -233,3 +240,179 @@ def disable_view_window():
         self.window.set_visible(visible=False)
 
     rendering.Viewer.__init__ = constructor
+
+
+def plot_metrics(logger):
+    train_loss = logger.get_values("training_loss")
+    train_entropy = logger.get_values("training_entropy")
+    val_loss = logger.get_values("validation_loss")
+    val_acc = logger.get_values("validation_accuracy")
+
+    fig = plt.figure(figsize=(15, 5))
+    ax1 = fig.add_subplot(131, label="train")
+    ax2 = fig.add_subplot(131, label="val", frame_on=False)
+    ax4 = fig.add_subplot(132, label="entropy")
+    ax3 = fig.add_subplot(133, label="acc")
+
+    ax1.plot(train_loss, color="C0")
+    ax1.set_ylabel("Loss")
+    ax1.set_xlabel("Update (Training)", color="C0")
+    ax1.xaxis.grid(False)
+    ax1.set_ylim((0, 4))
+
+    ax2.plot(val_loss, color="C1")
+    ax2.xaxis.tick_top()
+    ax2.yaxis.tick_right()
+    ax2.set_xlabel('Epoch (Validation)', color="C1")
+    ax2.xaxis.set_label_position('top')
+    ax2.xaxis.grid(False)
+    ax2.get_yaxis().set_visible(False)
+    ax2.set_ylim((0, 4))
+
+    ax4.plot(train_entropy, color="C3")
+    ax4.set_xlabel('Update (Training)', color="black")
+    ax4.set_ylabel("Entropy", color="C3")
+    ax4.tick_params(axis='x', colors="black")
+    ax4.tick_params(axis='y', colors="black")
+    ax4.xaxis.grid(False)
+
+    ax3.plot(val_acc, color="C2")
+    ax3.set_xlabel("Epoch (Validation)", color="black")
+    ax3.set_ylabel("Accuracy", color="C2")
+    ax3.tick_params(axis='x', colors="black")
+    ax3.tick_params(axis='y', colors="black")
+    ax3.xaxis.grid(False)
+    ax3.set_ylim((0, 1))
+
+    fig.tight_layout(pad=2.0)
+    plt.show()
+
+
+class Logger():
+    def __init__(self, logdir, params=None):
+        self.basepath = os.path.join(logdir, strftime("%Y-%m-%dT%H-%M-%S"))
+        os.makedirs(self.basepath, exist_ok=True)
+        os.makedirs(self.log_dir, exist_ok=True)
+        if params is not None and os.path.exists(params):
+            shutil.copyfile(params, os.path.join(self.basepath, "params.pkl"))
+        self.log_dict = {}
+        self.dump_idx = {}
+
+    @property
+    def param_file(self):
+        return os.path.join(self.basepath, "params.pkl")
+
+    @property
+    def onnx_file(self):
+        return os.path.join(self.basepath, "model.onnx")
+
+    @property
+    def log_dir(self):
+        return os.path.join(self.basepath, "logs")
+
+    def log(self, name, value):
+        if name not in self.log_dict:
+            self.log_dict[name] = []
+            self.dump_idx[name] = -1
+        self.log_dict[name].append((len(self.log_dict[name]), time(), value))
+
+    def get_values(self, name):
+        if name in self.log_dict:
+            return [x[2] for x in self.log_dict[name]]
+        return None
+
+    def dump(self):
+        for name, rows in self.log_dict.items():
+            with open(os.path.join(self.log_dir, name + ".log"), "a") as f:
+                for i, row in enumerate(rows):
+                    if i > self.dump_idx[name]:
+                        f.write(",".join([str(x) for x in row]) + "\n")
+                        self.dump_idx[name] = i
+
+
+def print_action(dataset, action):
+    action = dataset.action_mapping[action]
+    print("Left %.1f" % action[0] if action[0] < 0 else "Right %.1f" %
+                                                        action[0] if action[0] > 0 else "Straight")
+    print("Throttle %.1f" % action[1])
+    print("Break %.1f" % action[2])
+
+
+def show_video():
+    mp4list = glob.glob('video/*.mp4')
+    if len(mp4list) > 0:
+        mp4 = mp4list[0]
+        video = io.open(mp4, 'r+b').read()
+        encoded = base64.b64encode(video)
+        display.display(HTML(data='''<video alt="test" autoplay 
+                    loop controls style="height: 400px;">
+                    <source src="data:video/mp4;base64,{0}" type="video/mp4" />
+                 </video>'''.format(encoded.decode('ascii'))))
+    else:
+        print("Could not find video")
+
+
+def train(net, loader, loss_func, optimizer, logger, epoch, device):
+    net.train()
+    running_loss = None
+    alpha = 0.3
+    with tqdm(loader, desc="[%03d] Loss: %.4f" % (epoch, 0.)) as pbar:
+        for frame, action in pbar:
+            frame = frame.float().to(device)
+            action = action.to(device)
+            # prediction
+            prediction = net(frame)
+            # loss
+            loss = loss_func(prediction, action)
+            # entropy
+            with torch.no_grad():
+                probs = torch.softmax(prediction, dim=-1)
+                entropy = torch.mean(-torch.sum(probs * torch.log(probs), dim=-1))
+                # Update weights
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            # log
+            logger.log("training_loss", loss.item())
+            logger.log("training_entropy", entropy.item())
+            # update progress
+            running_loss = loss.item() if running_loss is None else loss.item() * alpha + (1 - alpha) * running_loss
+            pbar.set_description("[%03d] Loss: %.4f" % (epoch, running_loss))
+    return frame  # serves as sample input for saving the model in ONNX format
+
+
+def val(net, loader, loss_func, logger, epoch, device):
+    bs = loader.batch_size
+    net.eval()
+    predictions = np.empty((len(loader.dataset, )), dtype=np.float32)
+    targets = np.empty((len(loader.dataset, )), dtype=np.float32)
+    loss_ = []
+    for i, (frame, action) in enumerate(tqdm(loader, desc="[%03d] Validation" % epoch)):
+        with torch.no_grad():
+            frame = frame.float().to(device)
+            action = action.to(device)
+            # prediction
+            prediction = net(frame)
+            loss_.append(loss_func(prediction, action).cpu().item())
+            # collect predictions and targets
+            prediction = torch.argmax(prediction.cpu(), dim=-1)
+            predictions[i * bs:i * bs + len(prediction)] = prediction.cpu().numpy()
+            targets[i * bs:i * bs + len(prediction)] = action.cpu().numpy()
+    # loss
+    accuracy = np.mean(targets == predictions)
+    # log
+    logger.log("validation_loss", np.mean(loss_))
+    logger.log("validation_accuracy", accuracy)
+    # --
+    return np.mean(loss_), accuracy
+
+
+def save_as_onnx(torch_model, sample_input, model_path):
+    torch.onnx.export(torch_model,  # model being run
+                      sample_input,  # model input (or a tuple for multiple inputs)
+                      f=model_path,  # where to save the model (can be a file or file-like object)
+                      export_params=True,  # store the trained parameter weights inside the model file
+                      opset_version=13,
+                      # the ONNX version to export the model to - see https://github.com/microsoft/onnxruntime/blob/master/docs/Versioning.md
+                      do_constant_folding=True,  # whether to execute constant folding for optimization
+                      )
