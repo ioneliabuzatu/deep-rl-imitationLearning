@@ -57,6 +57,7 @@ class AgentNetwork(nn.Module):
         return int(feature_map_size)
 
 
+wandb.run = config.tensorboard.run
 param_file = "./logdir_dagger/2021-04-18T13-20-20/params.pkl"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device: " + str(device))
@@ -70,5 +71,4 @@ scores = []
 for i in tqdm(range(n_eval_episodes), desc="Episode"):
     scores.append(run_episode(train_agent, show_progress=False, record_video=False))
     wandb.log({"Ten runs evaluation": scores[-1]}, step=i)
-    print("... mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
 print("Final Mean Score: %.2f (Std: %.2f)" % (np.mean(scores), np.std(scores)))
